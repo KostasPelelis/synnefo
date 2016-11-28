@@ -26,16 +26,20 @@ from snf_django.lib.api import utils, faults
 from synnefo.userdata.models import PublicKeyPair
 from synnefo.userdata.util import generate_keypair, SUPPORT_GENERATE_KEYS
 from synnefo.api import util
+from synnefo.api.validators import name_leading_trailing_spaces
 from synnefo.db import transaction
 
 from logging import getLogger
 
 log = getLogger(__name__)
 
+log.debug(name_leading_trailing_spaces)
+
 urlpatterns = patterns(
     'synnefo.api.keypairs',
     (r'^(?:/|.json|.xml)?$', 'demux'),
-    (r'^/([\w-]+)(?:/|.json|.xml)?$', 'keypair_demux'),
+    (r'^/(%(key_name_regex)s)(?:/|.json|.xml)?$' % {
+        'key_name_regex': name_leading_trailing_spaces}, 'keypair_demux'),
 )
 
 
