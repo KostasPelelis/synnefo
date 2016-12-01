@@ -14,6 +14,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import json
+import re
 
 from django.conf import settings
 from django.conf.urls import patterns
@@ -27,15 +28,23 @@ from synnefo.userdata.models import PublicKeyPair
 from synnefo.userdata.util import generate_keypair, SUPPORT_GENERATE_KEYS
 from synnefo.api import util
 from synnefo.db import transaction
+from synnefo.webproject.validators import printable_char_range
 
 from logging import getLogger
+
+key_name_regex = ('[%(ws)s]*[%(no_ws)s]+[%(ws)s]*|'
+    '[%(ws)s]*[%(no_ws)s][%(ws)s%(no_ws)s]+[%(no_ws)s][%(ws)s]' % {
+        'ws': printable_char_range(),
+        'no_ws': printable_char_range(allow_ws=False)
+    })
 
 log = getLogger(__name__)
 
 urlpatterns = patterns(
     'synnefo.api.keypairs',
     (r'^(?:/|.json|.xml)?$', 'demux'),
-    (r'^/([\w-]+)(?:/|.json|.xml)?$', 'keypair_demux'),
+    (r'^/(%s)(?:/|.json|.xml)?$' % (key_name_regex)
+        , 'keypair_demux'),
 )
 
 
@@ -91,8 +100,6 @@ def list_keypairs(request):
 @transaction.commit_on_success
 def create_new_keypair(request):
 
-    get_user(request, settings.ASTAKOS_AUTH_URL)
-
     if PublicKeyPair.user_limit_exceeded(request.user_uniq):
         return HttpResponseServerError("SSH keys limit exceeded")
 
@@ -103,6 +110,9 @@ def create_new_keypair(request):
         name = keypair['name']
     except (KeyError, AssertionError):
         raise faults.BadRequest('Malformed request.')
+
+    if re.match(key_name_regex, name) is None:
+        raise faults.BadRequest('Invalid name format')
 
     try:
         # If the public_key is provided  and the corresponding
@@ -138,7 +148,6 @@ def create_new_keypair(request):
 
 @api.api_method(http_method='GET', user_required=True, logger=log)
 def get_keypair(request, keypair_name):
-    get_user(request, settings.ASTAKOS_AUTH_URL)
     keypair = util.get_keypair(keypair_name, request.user_uniq)
     keypairdict = keypair_to_dict(keypair, details=True)
     data = json.dumps(keypairdict)
@@ -148,7 +157,6 @@ def get_keypair(request, keypair_name):
 @api.api_method(http_method='DELETE', user_required=True, logger=log)
 @transaction.commit_on_success
 def delete_keypair(request, keypair_name):
-    get_user(request, settings.ASTAKOS_AUTH_URL)
     keypair = util.get_keypair(keypair_name, request.user_uniq,
                                for_update=True)
     # The Keypair object should be deleted from the database
